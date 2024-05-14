@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -127,6 +128,13 @@ public class OAuth2AuthorizationCodeRequestAuthenticationProviderTests {
 		assertThatThrownBy(() -> this.authenticationProvider.setAuthenticationValidator(null))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessage("authenticationValidator cannot be null");
+	}
+
+	@Test
+	public void setAuthorizationConsentRequiredWhenNullThenThrowIllegalArgumentException() {
+		assertThatThrownBy(() -> this.authenticationProvider.setAuthorizationConsentRequired(null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessage("authorizationConsentRequired cannot be null");
 	}
 
 	@Test
@@ -492,6 +500,30 @@ public class OAuth2AuthorizationCodeRequestAuthenticationProviderTests {
 				(OAuth2AuthorizationCodeRequestAuthenticationToken) this.authenticationProvider.authenticate(authentication);
 
 		assertAuthorizationCodeRequestWithAuthorizationCodeResult(registeredClient, authentication, authenticationResult);
+	}
+
+	@Test
+	public void authenticateWhenCustomAuthorizationConsentRequiredThenUsed() {
+		@SuppressWarnings("unchecked")
+		Predicate<OAuth2AuthorizationCodeRequestAuthenticationContext> authorizationConsentRequired = mock(Predicate.class);
+		this.authenticationProvider.setAuthorizationConsentRequired(authorizationConsentRequired);
+
+		RegisteredClient registeredClient = TestRegisteredClients.registeredClient().build();
+		when(this.registeredClientRepository.findByClientId(eq(registeredClient.getClientId())))
+				.thenReturn(registeredClient);
+
+		String redirectUri = registeredClient.getRedirectUris().toArray(new String[0])[1];
+		OAuth2AuthorizationCodeRequestAuthenticationToken authentication =
+				new OAuth2AuthorizationCodeRequestAuthenticationToken(
+						AUTHORIZATION_URI, registeredClient.getClientId(), principal,
+						redirectUri, STATE, registeredClient.getScopes(), null);
+
+		OAuth2AuthorizationCodeRequestAuthenticationToken authenticationResult =
+				(OAuth2AuthorizationCodeRequestAuthenticationToken) this.authenticationProvider.authenticate(authentication);
+
+		assertAuthorizationCodeRequestWithAuthorizationCodeResult(registeredClient, authentication, authenticationResult);
+
+		verify(authorizationConsentRequired).test(any());
 	}
 
 	@Test

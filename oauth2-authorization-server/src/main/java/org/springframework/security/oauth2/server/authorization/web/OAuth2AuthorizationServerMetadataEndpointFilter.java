@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,9 +57,7 @@ public final class OAuth2AuthorizationServerMetadataEndpointFilter extends OnceP
 	 */
 	private static final String DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI = "/.well-known/oauth-authorization-server";
 
-	private final RequestMatcher requestMatcher = new AntPathRequestMatcher(
-			DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI,
-			HttpMethod.GET.name());
+	private final RequestMatcher requestMatcher = createRequestMatcher();
 	private final OAuth2AuthorizationServerMetadataHttpMessageConverter authorizationServerMetadataHttpMessageConverter =
 			new OAuth2AuthorizationServerMetadataHttpMessageConverter();
 	private Consumer<OAuth2AuthorizationServerMetadata.Builder> authorizationServerMetadataCustomizer = (authorizationServerMetadata) -> {};
@@ -101,11 +99,13 @@ public final class OAuth2AuthorizationServerMetadataEndpointFilter extends OnceP
 				.grantType(AuthorizationGrantType.CLIENT_CREDENTIALS.getValue())
 				.grantType(AuthorizationGrantType.REFRESH_TOKEN.getValue())
 				.grantType(AuthorizationGrantType.DEVICE_CODE.getValue())
+				.grantType(AuthorizationGrantType.TOKEN_EXCHANGE.getValue())
 				.tokenRevocationEndpoint(asUrl(issuer, authorizationServerSettings.getTokenRevocationEndpoint()))
 				.tokenRevocationEndpointAuthenticationMethods(clientAuthenticationMethods())
 				.tokenIntrospectionEndpoint(asUrl(issuer, authorizationServerSettings.getTokenIntrospectionEndpoint()))
 				.tokenIntrospectionEndpointAuthenticationMethods(clientAuthenticationMethods())
-				.codeChallengeMethod("S256");
+				.codeChallengeMethod("S256")
+				.tlsClientCertificateBoundAccessTokens(true);
 
 		this.authorizationServerMetadataCustomizer.accept(authorizationServerMetadata);
 
@@ -114,12 +114,25 @@ public final class OAuth2AuthorizationServerMetadataEndpointFilter extends OnceP
 				authorizationServerMetadata.build(), MediaType.APPLICATION_JSON, httpResponse);
 	}
 
+	private static RequestMatcher createRequestMatcher() {
+		final RequestMatcher defaultRequestMatcher = new AntPathRequestMatcher(
+				DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI, HttpMethod.GET.name());
+		final RequestMatcher multipleIssuersRequestMatcher = new AntPathRequestMatcher(
+				DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI + "/**", HttpMethod.GET.name());
+		return (request) ->
+				AuthorizationServerContextHolder.getContext().getAuthorizationServerSettings().isMultipleIssuersAllowed() ?
+						multipleIssuersRequestMatcher.matches(request) :
+						defaultRequestMatcher.matches(request);
+	}
+
 	private static Consumer<List<String>> clientAuthenticationMethods() {
 		return (authenticationMethods) -> {
 			authenticationMethods.add(ClientAuthenticationMethod.CLIENT_SECRET_BASIC.getValue());
 			authenticationMethods.add(ClientAuthenticationMethod.CLIENT_SECRET_POST.getValue());
 			authenticationMethods.add(ClientAuthenticationMethod.CLIENT_SECRET_JWT.getValue());
 			authenticationMethods.add(ClientAuthenticationMethod.PRIVATE_KEY_JWT.getValue());
+			authenticationMethods.add(ClientAuthenticationMethod.TLS_CLIENT_AUTH.getValue());
+			authenticationMethods.add(ClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH.getValue());
 		};
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Refr
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenClaimsContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -54,6 +55,13 @@ import org.springframework.util.StringUtils;
 final class OAuth2ConfigurerUtils {
 
 	private OAuth2ConfigurerUtils() {
+	}
+
+	static String withMultipleIssuersPattern(String endpointUri) {
+		Assert.hasText(endpointUri, "endpointUri cannot be empty");
+		return endpointUri.startsWith("/") ?
+				"/**" + endpointUri :
+				"/**/" + endpointUri;
 	}
 
 	static RegisteredClientRepository getRegisteredClientRepository(HttpSecurity httpSecurity) {
@@ -97,10 +105,7 @@ final class OAuth2ConfigurerUtils {
 			if (tokenGenerator == null) {
 				JwtGenerator jwtGenerator = getJwtGenerator(httpSecurity);
 				OAuth2AccessTokenGenerator accessTokenGenerator = new OAuth2AccessTokenGenerator();
-				OAuth2TokenCustomizer<OAuth2TokenClaimsContext> accessTokenCustomizer = getAccessTokenCustomizer(httpSecurity);
-				if (accessTokenCustomizer != null) {
-					accessTokenGenerator.setAccessTokenCustomizer(accessTokenCustomizer);
-				}
+				accessTokenGenerator.setAccessTokenCustomizer(getAccessTokenCustomizer(httpSecurity));
 				OAuth2RefreshTokenGenerator refreshTokenGenerator = new OAuth2RefreshTokenGenerator();
 				if (jwtGenerator != null) {
 					tokenGenerator = new DelegatingOAuth2TokenGenerator(
@@ -121,10 +126,7 @@ final class OAuth2ConfigurerUtils {
 			JwtEncoder jwtEncoder = getJwtEncoder(httpSecurity);
 			if (jwtEncoder != null) {
 				jwtGenerator = new JwtGenerator(jwtEncoder);
-				OAuth2TokenCustomizer<JwtEncodingContext> jwtCustomizer = getJwtCustomizer(httpSecurity);
-				if (jwtCustomizer != null) {
-					jwtGenerator.setJwtCustomizer(jwtCustomizer);
-				}
+				jwtGenerator.setJwtCustomizer(getJwtCustomizer(httpSecurity));
 				httpSecurity.setSharedObject(JwtGenerator.class, jwtGenerator);
 			}
 		}
@@ -162,13 +164,29 @@ final class OAuth2ConfigurerUtils {
 	}
 
 	private static OAuth2TokenCustomizer<JwtEncodingContext> getJwtCustomizer(HttpSecurity httpSecurity) {
+		final OAuth2TokenCustomizer<JwtEncodingContext> defaultJwtCustomizer = DefaultOAuth2TokenCustomizers.jwtCustomizer();
 		ResolvableType type = ResolvableType.forClassWithGenerics(OAuth2TokenCustomizer.class, JwtEncodingContext.class);
-		return getOptionalBean(httpSecurity, type);
+		final OAuth2TokenCustomizer<JwtEncodingContext> jwtCustomizer = getOptionalBean(httpSecurity, type);
+		if (jwtCustomizer == null) {
+			return defaultJwtCustomizer;
+		}
+		return (context) -> {
+			defaultJwtCustomizer.customize(context);
+			jwtCustomizer.customize(context);
+		};
 	}
 
 	private static OAuth2TokenCustomizer<OAuth2TokenClaimsContext> getAccessTokenCustomizer(HttpSecurity httpSecurity) {
+		final OAuth2TokenCustomizer<OAuth2TokenClaimsContext> defaultAccessTokenCustomizer = DefaultOAuth2TokenCustomizers.accessTokenCustomizer();
 		ResolvableType type = ResolvableType.forClassWithGenerics(OAuth2TokenCustomizer.class, OAuth2TokenClaimsContext.class);
-		return getOptionalBean(httpSecurity, type);
+		OAuth2TokenCustomizer<OAuth2TokenClaimsContext> accessTokenCustomizer = getOptionalBean(httpSecurity, type);
+		if (accessTokenCustomizer == null) {
+			return defaultAccessTokenCustomizer;
+		}
+		return (context) -> {
+			defaultAccessTokenCustomizer.customize(context);
+			accessTokenCustomizer.customize(context);
+		};
 	}
 
 	static AuthorizationServerSettings getAuthorizationServerSettings(HttpSecurity httpSecurity) {

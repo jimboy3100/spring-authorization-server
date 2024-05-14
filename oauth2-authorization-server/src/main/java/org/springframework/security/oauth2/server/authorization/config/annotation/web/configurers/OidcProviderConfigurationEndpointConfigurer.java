@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.springframework.security.config.annotation.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.server.authorization.oidc.OidcProviderConfiguration;
 import org.springframework.security.oauth2.server.authorization.oidc.web.OidcProviderConfigurationEndpointFilter;
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -69,8 +70,11 @@ public final class OidcProviderConfigurationEndpointConfigurer extends AbstractO
 
 	@Override
 	void init(HttpSecurity httpSecurity) {
-		this.requestMatcher = new AntPathRequestMatcher(
-				"/.well-known/openid-configuration", HttpMethod.GET.name());
+		AuthorizationServerSettings authorizationServerSettings = OAuth2ConfigurerUtils.getAuthorizationServerSettings(httpSecurity);
+		String oidcProviderConfigurationEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				"/**/.well-known/openid-configuration" :
+				"/.well-known/openid-configuration";
+		this.requestMatcher = new AntPathRequestMatcher(oidcProviderConfigurationEndpointUri, HttpMethod.GET.name());
 	}
 
 	@Override

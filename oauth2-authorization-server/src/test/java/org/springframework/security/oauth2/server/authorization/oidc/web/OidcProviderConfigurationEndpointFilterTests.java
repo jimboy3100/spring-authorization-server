@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,9 @@ public class OidcProviderConfigurationEndpointFilterTests {
 
 	@Test
 	public void doFilterWhenNotConfigurationRequestThenNotProcessed() throws Exception {
+		AuthorizationServerContextHolder.setContext(
+				new TestAuthorizationServerContext(AuthorizationServerSettings.builder().build(), null));
+
 		String requestUri = "/path";
 		MockHttpServletRequest request = new MockHttpServletRequest("GET", requestUri);
 		request.setServletPath(requestUri);
@@ -74,6 +77,9 @@ public class OidcProviderConfigurationEndpointFilterTests {
 
 	@Test
 	public void doFilterWhenConfigurationRequestPostThenNotProcessed() throws Exception {
+		AuthorizationServerContextHolder.setContext(
+				new TestAuthorizationServerContext(AuthorizationServerSettings.builder().build(), null));
+
 		String requestUri = DEFAULT_OIDC_PROVIDER_CONFIGURATION_ENDPOINT_URI;
 		MockHttpServletRequest request = new MockHttpServletRequest("POST", requestUri);
 		request.setServletPath(requestUri);
@@ -126,17 +132,18 @@ public class OidcProviderConfigurationEndpointFilterTests {
 		assertThat(providerConfigurationResponse).contains("\"jwks_uri\":\"https://example.com/oauth2/v1/jwks\"");
 		assertThat(providerConfigurationResponse).contains("\"scopes_supported\":[\"openid\"]");
 		assertThat(providerConfigurationResponse).contains("\"response_types_supported\":[\"code\"]");
-		assertThat(providerConfigurationResponse).contains("\"grant_types_supported\":[\"authorization_code\",\"client_credentials\",\"refresh_token\",\"urn:ietf:params:oauth:grant-type:device_code\"]");
+		assertThat(providerConfigurationResponse).contains("\"grant_types_supported\":[\"authorization_code\",\"client_credentials\",\"refresh_token\",\"urn:ietf:params:oauth:grant-type:device_code\",\"urn:ietf:params:oauth:grant-type:token-exchange\"]");
 		assertThat(providerConfigurationResponse).contains("\"revocation_endpoint\":\"https://example.com/oauth2/v1/revoke\"");
-		assertThat(providerConfigurationResponse).contains("\"revocation_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\"]");
+		assertThat(providerConfigurationResponse).contains("\"revocation_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\",\"tls_client_auth\",\"self_signed_tls_client_auth\"]");
 		assertThat(providerConfigurationResponse).contains("\"introspection_endpoint\":\"https://example.com/oauth2/v1/introspect\"");
-		assertThat(providerConfigurationResponse).contains("\"introspection_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\"]");
+		assertThat(providerConfigurationResponse).contains("\"introspection_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\",\"tls_client_auth\",\"self_signed_tls_client_auth\"]");
 		assertThat(providerConfigurationResponse).contains("\"code_challenge_methods_supported\":[\"S256\"]");
+		assertThat(providerConfigurationResponse).contains("\"tls_client_certificate_bound_access_tokens\":true");
 		assertThat(providerConfigurationResponse).contains("\"subject_types_supported\":[\"public\"]");
 		assertThat(providerConfigurationResponse).contains("\"id_token_signing_alg_values_supported\":[\"RS256\"]");
 		assertThat(providerConfigurationResponse).contains("\"userinfo_endpoint\":\"https://example.com/userinfo\"");
 		assertThat(providerConfigurationResponse).contains("\"end_session_endpoint\":\"https://example.com/connect/logout\"");
-		assertThat(providerConfigurationResponse).contains("\"token_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\"]");
+		assertThat(providerConfigurationResponse).contains("\"token_endpoint_auth_methods_supported\":[\"client_secret_basic\",\"client_secret_post\",\"client_secret_jwt\",\"private_key_jwt\",\"tls_client_auth\",\"self_signed_tls_client_auth\"]");
 	}
 
 	@Test

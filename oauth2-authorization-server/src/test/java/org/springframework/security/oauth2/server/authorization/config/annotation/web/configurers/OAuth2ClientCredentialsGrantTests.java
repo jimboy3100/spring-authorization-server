@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,9 @@ import org.springframework.security.oauth2.server.authorization.authentication.O
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientCredentialsAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2DeviceCodeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2RefreshTokenAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.PublicClientAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.X509ClientCertificateAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository.RegisteredClientParametersMapper;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -82,10 +84,13 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.client.TestRegisteredClients;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.jackson2.TestingAuthenticationTokenMixin;
+import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.test.SpringTestContext;
 import org.springframework.security.oauth2.server.authorization.test.SpringTestContextExtension;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
+import org.springframework.security.oauth2.server.authorization.util.TestX509Certificates;
 import org.springframework.security.oauth2.server.authorization.web.authentication.ClientSecretBasicAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.ClientSecretPostAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.JwtClientAssertionAuthenticationConverter;
@@ -93,7 +98,9 @@ import org.springframework.security.oauth2.server.authorization.web.authenticati
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2ClientCredentialsAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2DeviceCodeAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2RefreshTokenAuthenticationConverter;
+import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2TokenExchangeAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.PublicClientAuthenticationConverter;
+import org.springframework.security.oauth2.server.authorization.web.authentication.X509ClientCertificateAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationConverter;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
@@ -110,6 +117,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -257,6 +265,34 @@ public class OAuth2ClientCredentialsGrantTests {
 	}
 
 	@Test
+	public void requestWhenTokenRequestWithPKIX509ClientCertificateThenTokenResponse() throws Exception {
+		this.spring.register(AuthorizationServerConfiguration.class).autowire();
+
+		// @formatter:off
+		RegisteredClient registeredClient = TestRegisteredClients.registeredClient2()
+				.clientAuthenticationMethod(ClientAuthenticationMethod.TLS_CLIENT_AUTH)
+				.clientSettings(
+						ClientSettings.builder()
+								.x509CertificateSubjectDN(TestX509Certificates.DEMO_CLIENT_PKI_CERTIFICATE[0].getSubjectX500Principal().getName())
+								.build()
+				)
+				.build();
+		// @formatter:on
+		this.registeredClientRepository.save(registeredClient);
+
+		this.mvc.perform(post(DEFAULT_TOKEN_ENDPOINT_URI)
+						.with(x509(TestX509Certificates.DEMO_CLIENT_PKI_CERTIFICATE))
+						.param(OAuth2ParameterNames.CLIENT_ID, registeredClient.getClientId())
+						.param(OAuth2ParameterNames.GRANT_TYPE, AuthorizationGrantType.CLIENT_CREDENTIALS.getValue())
+						.param(OAuth2ParameterNames.SCOPE, "scope1 scope2"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.access_token").isNotEmpty())
+				.andExpect(jsonPath("$.scope").value("scope1 scope2"));
+
+		verify(jwtCustomizer).customize(any());
+	}
+
+	@Test
 	public void requestWhenTokenEndpointCustomizedThenUsed() throws Exception {
 		this.spring.register(AuthorizationServerConfigurationCustomTokenEndpoint.class).autowire();
 
@@ -294,7 +330,8 @@ public class OAuth2ClientCredentialsGrantTests {
 						converter instanceof OAuth2AuthorizationCodeAuthenticationConverter ||
 						converter instanceof OAuth2RefreshTokenAuthenticationConverter ||
 						converter instanceof OAuth2ClientCredentialsAuthenticationConverter ||
-						converter instanceof OAuth2DeviceCodeAuthenticationConverter);
+						converter instanceof OAuth2DeviceCodeAuthenticationConverter ||
+						converter instanceof OAuth2TokenExchangeAuthenticationConverter);
 
 		verify(authenticationProvider).authenticate(eq(clientCredentialsAuthentication));
 
@@ -307,7 +344,8 @@ public class OAuth2ClientCredentialsGrantTests {
 						provider instanceof OAuth2AuthorizationCodeAuthenticationProvider ||
 						provider instanceof OAuth2RefreshTokenAuthenticationProvider ||
 						provider instanceof OAuth2ClientCredentialsAuthenticationProvider ||
-						provider instanceof OAuth2DeviceCodeAuthenticationProvider);
+						provider instanceof OAuth2DeviceCodeAuthenticationProvider ||
+						provider instanceof OAuth2TokenExchangeAuthenticationProvider);
 
 		verify(authenticationSuccessHandler).onAuthenticationSuccess(any(), any(), eq(accessTokenAuthentication));
 	}
@@ -338,6 +376,7 @@ public class OAuth2ClientCredentialsGrantTests {
 		assertThat(authenticationConverters).allMatch((converter) ->
 				converter == authenticationConverter ||
 						converter instanceof JwtClientAssertionAuthenticationConverter ||
+						converter instanceof X509ClientCertificateAuthenticationConverter ||
 						converter instanceof ClientSecretBasicAuthenticationConverter ||
 						converter instanceof ClientSecretPostAuthenticationConverter ||
 						converter instanceof PublicClientAuthenticationConverter);
@@ -351,10 +390,35 @@ public class OAuth2ClientCredentialsGrantTests {
 		assertThat(authenticationProviders).allMatch((provider) ->
 				provider == authenticationProvider ||
 						provider instanceof JwtClientAssertionAuthenticationProvider ||
+						provider instanceof X509ClientCertificateAuthenticationProvider ||
 						provider instanceof ClientSecretAuthenticationProvider ||
 						provider instanceof PublicClientAuthenticationProvider);
 
 		verify(authenticationSuccessHandler).onAuthenticationSuccess(any(), any(), eq(clientPrincipal));
+	}
+
+	@Test
+	public void requestWhenTokenRequestIncludesIssuerPathThenIssuerResolvedWithPath() throws Exception {
+		this.spring.register(AuthorizationServerConfigurationWithMultipleIssuersAllowed.class).autowire();
+
+		RegisteredClient registeredClient = TestRegisteredClients.registeredClient2().build();
+		this.registeredClientRepository.save(registeredClient);
+
+		String issuer = "https://example.com:8443/issuer1";
+
+		this.mvc.perform(post(issuer.concat(DEFAULT_TOKEN_ENDPOINT_URI))
+						.param(OAuth2ParameterNames.GRANT_TYPE, AuthorizationGrantType.CLIENT_CREDENTIALS.getValue())
+						.param(OAuth2ParameterNames.SCOPE, "scope1 scope2")
+						.header(HttpHeaders.AUTHORIZATION, "Basic " + encodeBasicAuth(
+								registeredClient.getClientId(), registeredClient.getClientSecret())))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.access_token").isNotEmpty())
+				.andExpect(jsonPath("$.scope").value("scope1 scope2"));
+
+		ArgumentCaptor<JwtEncodingContext> jwtEncodingContextCaptor = ArgumentCaptor.forClass(JwtEncodingContext.class);
+		verify(jwtCustomizer).customize(jwtEncodingContextCaptor.capture());
+		JwtEncodingContext jwtEncodingContext = jwtEncodingContextCaptor.getValue();
+		assertThat(jwtEncodingContext.getAuthorizationServerContext().getIssuer()).isEqualTo(issuer);
 	}
 
 	private static String encodeBasicAuth(String clientId, String secret) throws Exception {
@@ -506,6 +570,17 @@ public class OAuth2ClientCredentialsGrantTests {
 					SecurityContextHolder.setContext(securityContext);
 				}
 			};
+		}
+
+	}
+
+	@EnableWebSecurity
+	@Import(OAuth2AuthorizationServerConfiguration.class)
+	static class AuthorizationServerConfigurationWithMultipleIssuersAllowed extends AuthorizationServerConfiguration {
+
+		@Bean
+		AuthorizationServerSettings authorizationServerSettings() {
+			return AuthorizationServerSettings.builder().multipleIssuersAllowed(true).build();
 		}
 
 	}

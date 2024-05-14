@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,6 +65,13 @@ public final class ConfigurationSettingNames {
 		 */
 		public static final String TOKEN_ENDPOINT_AUTHENTICATION_SIGNING_ALGORITHM = CLIENT_SETTINGS_NAMESPACE.concat("token-endpoint-authentication-signing-algorithm");
 
+		/**
+		 * Set the expected subject distinguished name associated to the client {@code X509Certificate}
+		 * received during client authentication when using the {@code tls_client_auth} method.
+		 * @since 1.3
+		 */
+		public static final String X509_CERTIFICATE_SUBJECT_DN = CLIENT_SETTINGS_NAMESPACE.concat("x509-certificate-subject-dn");
+
 		private Client() {
 		}
 
@@ -80,6 +87,12 @@ public final class ConfigurationSettingNames {
 		 * Set the URL the Authorization Server uses as its Issuer Identifier.
 		 */
 		public static final String ISSUER = AUTHORIZATION_SERVER_SETTINGS_NAMESPACE.concat("issuer");
+
+		/**
+		 * Set to {@code true} if multiple issuers are allowed per host.
+		 * @since 1.3
+		 */
+		public static final String MULTIPLE_ISSUERS_ALLOWED = AUTHORIZATION_SERVER_SETTINGS_NAMESPACE.concat("multiple-issuers-allowed");
 
 		/**
 		 * Set the OAuth 2.0 Authorization endpoint.
@@ -181,6 +194,13 @@ public final class ConfigurationSettingNames {
 		 * Set the {@link SignatureAlgorithm JWS} algorithm for signing the {@link OidcIdToken ID Token}.
 		 */
 		public static final String ID_TOKEN_SIGNATURE_ALGORITHM = TOKEN_SETTINGS_NAMESPACE.concat("id-token-signature-algorithm");
+
+		/**
+		 * Set to {@code true} if access tokens must be bound to the client {@code X509Certificate}
+		 * received during client authentication when using the {@code tls_client_auth} or {@code self_signed_tls_client_auth} method.
+		 * @since 1.3
+		 */
+		public static final String X509_CERTIFICATE_BOUND_ACCESS_TOKENS = TOKEN_SETTINGS_NAMESPACE.concat("x509-certificate-bound-access-tokens");
 
 		private Token() {
 		}

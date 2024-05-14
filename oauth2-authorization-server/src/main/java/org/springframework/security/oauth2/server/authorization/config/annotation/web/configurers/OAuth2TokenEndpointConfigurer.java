@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ import org.springframework.security.oauth2.server.authorization.authentication.O
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientCredentialsAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2DeviceCodeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2RefreshTokenAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenExchangeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.security.oauth2.server.authorization.web.OAuth2TokenEndpointFilter;
@@ -46,6 +47,7 @@ import org.springframework.security.oauth2.server.authorization.web.authenticati
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2ClientCredentialsAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2DeviceCodeAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2RefreshTokenAuthenticationConverter;
+import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2TokenExchangeAuthenticationConverter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.AuthenticationConverter;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
@@ -53,6 +55,8 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
+
+import static org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2ConfigurerUtils.withMultipleIssuersPattern;
 
 /**
  * Configurer for the OAuth 2.0 Token Endpoint.
@@ -162,8 +166,10 @@ public final class OAuth2TokenEndpointConfigurer extends AbstractOAuth2Configure
 	@Override
 	void init(HttpSecurity httpSecurity) {
 		AuthorizationServerSettings authorizationServerSettings = OAuth2ConfigurerUtils.getAuthorizationServerSettings(httpSecurity);
-		this.requestMatcher = new AntPathRequestMatcher(
-				authorizationServerSettings.getTokenEndpoint(), HttpMethod.POST.name());
+		String tokenEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getTokenEndpoint()) :
+				authorizationServerSettings.getTokenEndpoint();
+		this.requestMatcher = new AntPathRequestMatcher(tokenEndpointUri, HttpMethod.POST.name());
 
 		List<AuthenticationProvider> authenticationProviders = createDefaultAuthenticationProviders(httpSecurity);
 		if (!this.authenticationProviders.isEmpty()) {
@@ -179,10 +185,11 @@ public final class OAuth2TokenEndpointConfigurer extends AbstractOAuth2Configure
 		AuthenticationManager authenticationManager = httpSecurity.getSharedObject(AuthenticationManager.class);
 		AuthorizationServerSettings authorizationServerSettings = OAuth2ConfigurerUtils.getAuthorizationServerSettings(httpSecurity);
 
+		String tokenEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getTokenEndpoint()) :
+				authorizationServerSettings.getTokenEndpoint();
 		OAuth2TokenEndpointFilter tokenEndpointFilter =
-				new OAuth2TokenEndpointFilter(
-						authenticationManager,
-						authorizationServerSettings.getTokenEndpoint());
+				new OAuth2TokenEndpointFilter(authenticationManager, tokenEndpointUri);
 		List<AuthenticationConverter> authenticationConverters = createDefaultAuthenticationConverters();
 		if (!this.accessTokenRequestConverters.isEmpty()) {
 			authenticationConverters.addAll(0, this.accessTokenRequestConverters);
@@ -211,6 +218,7 @@ public final class OAuth2TokenEndpointConfigurer extends AbstractOAuth2Configure
 		authenticationConverters.add(new OAuth2RefreshTokenAuthenticationConverter());
 		authenticationConverters.add(new OAuth2ClientCredentialsAuthenticationConverter());
 		authenticationConverters.add(new OAuth2DeviceCodeAuthenticationConverter());
+		authenticationConverters.add(new OAuth2TokenExchangeAuthenticationConverter());
 
 		return authenticationConverters;
 	}
@@ -240,6 +248,10 @@ public final class OAuth2TokenEndpointConfigurer extends AbstractOAuth2Configure
 		OAuth2DeviceCodeAuthenticationProvider deviceCodeAuthenticationProvider =
 				new OAuth2DeviceCodeAuthenticationProvider(authorizationService, tokenGenerator);
 		authenticationProviders.add(deviceCodeAuthenticationProvider);
+
+		OAuth2TokenExchangeAuthenticationProvider tokenExchangeAuthenticationProvider =
+				new OAuth2TokenExchangeAuthenticationProvider(authorizationService, tokenGenerator);
+		authenticationProviders.add(tokenExchangeAuthenticationProvider);
 
 		return authenticationProviders;
 	}

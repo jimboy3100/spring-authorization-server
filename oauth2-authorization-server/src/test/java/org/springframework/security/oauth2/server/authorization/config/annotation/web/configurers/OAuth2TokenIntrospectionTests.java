@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -107,6 +108,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -121,7 +123,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(SpringTestContextExtension.class)
 public class OAuth2TokenIntrospectionTests {
 	private static EmbeddedDatabase db;
-	private static AuthorizationServerSettings authorizationServerSettings;
 	private static OAuth2TokenCustomizer<OAuth2TokenClaimsContext> accessTokenCustomizer;
 	private static AuthenticationConverter authenticationConverter;
 	private static Consumer<List<AuthenticationConverter>> authenticationConvertersConsumer;
@@ -148,9 +149,11 @@ public class OAuth2TokenIntrospectionTests {
 	@Autowired
 	private OAuth2AuthorizationService authorizationService;
 
+	@Autowired
+	private AuthorizationServerSettings authorizationServerSettings;
+
 	@BeforeAll
 	public static void init() {
-		authorizationServerSettings = AuthorizationServerSettings.builder().tokenIntrospectionEndpoint("/test/introspect").build();
 		authenticationConverter = mock(AuthenticationConverter.class);
 		authenticationConvertersConsumer = mock(Consumer.class);
 		authenticationProvider = mock(AuthenticationProvider.class);
@@ -165,6 +168,18 @@ public class OAuth2TokenIntrospectionTests {
 				.addScript("org/springframework/security/oauth2/server/authorization/oauth2-authorization-schema.sql")
 				.addScript("org/springframework/security/oauth2/server/authorization/client/oauth2-registered-client-schema.sql")
 				.build();
+	}
+
+	@SuppressWarnings("unchecked")
+	@BeforeEach
+	public void setup() {
+		reset(authenticationConverter);
+		reset(authenticationConvertersConsumer);
+		reset(authenticationProvider);
+		reset(authenticationProvidersConsumer);
+		reset(authenticationSuccessHandler);
+		reset(authenticationFailureHandler);
+		reset(accessTokenCustomizer);
 	}
 
 	@AfterEach
@@ -211,7 +226,7 @@ public class OAuth2TokenIntrospectionTests {
 		this.authorizationService.save(authorization);
 
 		// @formatter:off
-		MvcResult mvcResult = this.mvc.perform(post(authorizationServerSettings.getTokenIntrospectionEndpoint())
+		MvcResult mvcResult = this.mvc.perform(post(this.authorizationServerSettings.getTokenIntrospectionEndpoint())
 				.params(getTokenIntrospectionRequestParameters(accessToken, OAuth2TokenType.ACCESS_TOKEN))
 				.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(introspectRegisteredClient)))
 				.andExpect(status().isOk())
@@ -251,7 +266,7 @@ public class OAuth2TokenIntrospectionTests {
 		this.authorizationService.save(authorization);
 
 		// @formatter:off
-		MvcResult mvcResult = this.mvc.perform(post(authorizationServerSettings.getTokenIntrospectionEndpoint())
+		MvcResult mvcResult = this.mvc.perform(post(this.authorizationServerSettings.getTokenIntrospectionEndpoint())
 				.params(getTokenIntrospectionRequestParameters(refreshToken, OAuth2TokenType.REFRESH_TOKEN))
 				.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(introspectRegisteredClient)))
 				.andExpect(status().isOk())
@@ -293,7 +308,7 @@ public class OAuth2TokenIntrospectionTests {
 		this.authorizationService.save(authorization);
 
 		// @formatter:off
-		MvcResult mvcResult = this.mvc.perform(post(authorizationServerSettings.getTokenEndpoint())
+		MvcResult mvcResult = this.mvc.perform(post(this.authorizationServerSettings.getTokenEndpoint())
 				.params(getAuthorizationCodeTokenRequestParameters(authorizedRegisteredClient, authorization))
 				.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(authorizedRegisteredClient)))
 				.andExpect(status().isOk())
@@ -307,7 +322,7 @@ public class OAuth2TokenIntrospectionTests {
 		this.registeredClientRepository.save(introspectRegisteredClient);
 
 		// @formatter:off
-		mvcResult = this.mvc.perform(post(authorizationServerSettings.getTokenIntrospectionEndpoint())
+		mvcResult = this.mvc.perform(post(this.authorizationServerSettings.getTokenIntrospectionEndpoint())
 				.params(getTokenIntrospectionRequestParameters(accessToken, OAuth2TokenType.ACCESS_TOKEN))
 				.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(introspectRegisteredClient)))
 				.andExpect(status().isOk())
@@ -366,7 +381,7 @@ public class OAuth2TokenIntrospectionTests {
 		when(authenticationProvider.authenticate(any())).thenReturn(tokenIntrospectionAuthentication);
 
 		// @formatter:off
-		this.mvc.perform(post(authorizationServerSettings.getTokenIntrospectionEndpoint())
+		this.mvc.perform(post(this.authorizationServerSettings.getTokenIntrospectionEndpoint())
 				.params(getTokenIntrospectionRequestParameters(accessToken, OAuth2TokenType.ACCESS_TOKEN))
 				.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(introspectRegisteredClient)))
 				.andExpect(status().isOk());
@@ -393,6 +408,41 @@ public class OAuth2TokenIntrospectionTests {
 						provider instanceof OAuth2TokenIntrospectionAuthenticationProvider);
 
 		verify(authenticationSuccessHandler).onAuthenticationSuccess(any(), any(), eq(tokenIntrospectionAuthentication));
+	}
+
+	@Test
+	public void requestWhenIntrospectionRequestIncludesIssuerPathThenActive() throws Exception {
+		this.spring.register(AuthorizationServerConfigurationCustomTokenIntrospectionEndpoint.class).autowire();
+
+		RegisteredClient introspectRegisteredClient = TestRegisteredClients.registeredClient2().build();
+		this.registeredClientRepository.save(introspectRegisteredClient);
+
+		RegisteredClient authorizedRegisteredClient = TestRegisteredClients.registeredClient().build();
+		this.registeredClientRepository.save(authorizedRegisteredClient);
+
+		OAuth2Authorization authorization = TestOAuth2Authorizations.authorization(authorizedRegisteredClient).build();
+		this.authorizationService.save(authorization);
+
+		OAuth2AccessToken accessToken = authorization.getAccessToken().getToken();
+
+		Authentication clientPrincipal = new OAuth2ClientAuthenticationToken(
+				introspectRegisteredClient, ClientAuthenticationMethod.CLIENT_SECRET_BASIC, introspectRegisteredClient.getClientSecret());
+		OAuth2TokenIntrospectionAuthenticationToken tokenIntrospectionAuthentication =
+				new OAuth2TokenIntrospectionAuthenticationToken(
+						accessToken.getTokenValue(), clientPrincipal, null, null);
+
+		when(authenticationConverter.convert(any())).thenReturn(tokenIntrospectionAuthentication);
+		when(authenticationProvider.supports(eq(OAuth2TokenIntrospectionAuthenticationToken.class))).thenReturn(true);
+		when(authenticationProvider.authenticate(any())).thenReturn(tokenIntrospectionAuthentication);
+
+		String issuer = "https://example.com:8443/issuer1";
+
+		// @formatter:off
+		this.mvc.perform(post(issuer.concat(this.authorizationServerSettings.getTokenIntrospectionEndpoint()))
+						.params(getTokenIntrospectionRequestParameters(accessToken, OAuth2TokenType.ACCESS_TOKEN))
+						.header(HttpHeaders.AUTHORIZATION, getAuthorizationHeader(introspectRegisteredClient)))
+				.andExpect(status().isOk());
+		// @formatter:on
 	}
 
 	private static MultiValueMap<String, String> getTokenIntrospectionRequestParameters(OAuth2Token token,
@@ -468,7 +518,7 @@ public class OAuth2TokenIntrospectionTests {
 
 		@Bean
 		AuthorizationServerSettings authorizationServerSettings() {
-			return authorizationServerSettings;
+			return AuthorizationServerSettings.builder().tokenIntrospectionEndpoint("/test/introspect").build();
 		}
 
 		@Bean
@@ -531,6 +581,12 @@ public class OAuth2TokenIntrospectionTests {
 			return http.build();
 		}
 		// @formatter:on
+
+
+		@Override
+		AuthorizationServerSettings authorizationServerSettings() {
+			return AuthorizationServerSettings.builder().multipleIssuersAllowed(true).tokenIntrospectionEndpoint("/test/introspect").build();
+		}
 
 	}
 

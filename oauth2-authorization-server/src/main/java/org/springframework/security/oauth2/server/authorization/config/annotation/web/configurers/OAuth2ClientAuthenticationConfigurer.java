@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import org.springframework.security.oauth2.server.authorization.authentication.C
 import org.springframework.security.oauth2.server.authorization.authentication.JwtClientAssertionAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.authentication.PublicClientAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.X509ClientCertificateAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.web.OAuth2ClientAuthenticationFilter;
@@ -42,6 +43,7 @@ import org.springframework.security.oauth2.server.authorization.web.authenticati
 import org.springframework.security.oauth2.server.authorization.web.authentication.DelegatingAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.JwtClientAssertionAuthenticationConverter;
 import org.springframework.security.oauth2.server.authorization.web.authentication.PublicClientAuthenticationConverter;
+import org.springframework.security.oauth2.server.authorization.web.authentication.X509ClientCertificateAuthenticationConverter;
 import org.springframework.security.web.authentication.AuthenticationConverter;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -50,6 +52,8 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
+
+import static org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2ConfigurerUtils.withMultipleIssuersPattern;
 
 /**
  * Configurer for OAuth 2.0 Client Authentication.
@@ -159,19 +163,23 @@ public final class OAuth2ClientAuthenticationConfigurer extends AbstractOAuth2Co
 	@Override
 	void init(HttpSecurity httpSecurity) {
 		AuthorizationServerSettings authorizationServerSettings = OAuth2ConfigurerUtils.getAuthorizationServerSettings(httpSecurity);
+		String tokenEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getTokenEndpoint()) :
+				authorizationServerSettings.getTokenEndpoint();
+		String tokenIntrospectionEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getTokenIntrospectionEndpoint()) :
+				authorizationServerSettings.getTokenIntrospectionEndpoint();
+		String tokenRevocationEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getTokenRevocationEndpoint()) :
+				authorizationServerSettings.getTokenRevocationEndpoint();
+		String deviceAuthorizationEndpointUri = authorizationServerSettings.isMultipleIssuersAllowed() ?
+				withMultipleIssuersPattern(authorizationServerSettings.getDeviceAuthorizationEndpoint()) :
+				authorizationServerSettings.getDeviceAuthorizationEndpoint();
 		this.requestMatcher = new OrRequestMatcher(
-				new AntPathRequestMatcher(
-						authorizationServerSettings.getTokenEndpoint(),
-						HttpMethod.POST.name()),
-				new AntPathRequestMatcher(
-						authorizationServerSettings.getTokenIntrospectionEndpoint(),
-						HttpMethod.POST.name()),
-				new AntPathRequestMatcher(
-						authorizationServerSettings.getTokenRevocationEndpoint(),
-						HttpMethod.POST.name()),
-				new AntPathRequestMatcher(
-						authorizationServerSettings.getDeviceAuthorizationEndpoint(),
-						HttpMethod.POST.name()));
+				new AntPathRequestMatcher(tokenEndpointUri, HttpMethod.POST.name()),
+				new AntPathRequestMatcher(tokenIntrospectionEndpointUri, HttpMethod.POST.name()),
+				new AntPathRequestMatcher(tokenRevocationEndpointUri, HttpMethod.POST.name()),
+				new AntPathRequestMatcher(deviceAuthorizationEndpointUri, HttpMethod.POST.name()));
 
 		List<AuthenticationProvider> authenticationProviders = createDefaultAuthenticationProviders(httpSecurity);
 		if (!this.authenticationProviders.isEmpty()) {
@@ -212,6 +220,7 @@ public final class OAuth2ClientAuthenticationConfigurer extends AbstractOAuth2Co
 		List<AuthenticationConverter> authenticationConverters = new ArrayList<>();
 
 		authenticationConverters.add(new JwtClientAssertionAuthenticationConverter());
+		authenticationConverters.add(new X509ClientCertificateAuthenticationConverter());
 		authenticationConverters.add(new ClientSecretBasicAuthenticationConverter());
 		authenticationConverters.add(new ClientSecretPostAuthenticationConverter());
 		authenticationConverters.add(new PublicClientAuthenticationConverter());
@@ -228,6 +237,10 @@ public final class OAuth2ClientAuthenticationConfigurer extends AbstractOAuth2Co
 		JwtClientAssertionAuthenticationProvider jwtClientAssertionAuthenticationProvider =
 				new JwtClientAssertionAuthenticationProvider(registeredClientRepository, authorizationService);
 		authenticationProviders.add(jwtClientAssertionAuthenticationProvider);
+
+		X509ClientCertificateAuthenticationProvider x509ClientCertificateAuthenticationProvider =
+				new X509ClientCertificateAuthenticationProvider(registeredClientRepository, authorizationService);
+		authenticationProviders.add(x509ClientCertificateAuthenticationProvider);
 
 		ClientSecretAuthenticationProvider clientSecretAuthenticationProvider =
 				new ClientSecretAuthenticationProvider(registeredClientRepository, authorizationService);
